@@ -1,0 +1,32 @@
+window:
+  layout-mode: auto
+  width: 300
+  margin-left: 20
+  margin-top: 20
+  margin-right: 20
+  margin-bottom: 20
+
+header:
+  font-family: SFPro
+  font-size: 22
+  font-weight: bold
+  foreground-color: black
+  background-color: None
+  margin-top: 5
+  margin-bottom: 5
+  margin-left: 5
+  margin-right: 5
+  width: 150
+
+button:
+  height: 28
+  width: 0
+  font-family: SFPro
+  font-size: 13
+  font-weight: normal
+  foreground-color: None
+  background-color: None
+  margin-top: 0
+  margin-bottom: 0
+  margin-left: 0
+  margin-right: 0
