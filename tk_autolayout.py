@@ -1,9 +1,12 @@
 import collections
 from tkinter import *
 import tkinter.font as tkfont
+
 import yamliny
 import threading
 from pprint import pprint
+
+from PIL import GifImagePlugin, Image, ImageTk
 
 
 class Label(Label):
@@ -17,6 +20,102 @@ class Button(Button):
     def on_click(self, cmd=None):
         if cmd is not None:
             self['command'] = cmd
+
+    def text(self, new_text=None):
+        if new_text:
+            self['text'] = new_text
+        return self['text']
+
+
+class AutoLayoutGif():
+    def __init__(self, tkinter_root, **args):
+        image_url = args['image-url']
+        self.container = None
+        self.play_state = 1
+        if tkinter_root:
+            self.tk_root = tkinter_root
+        self.image_object = Image.open(image_url)
+        w, h = self.image_object.size
+        self.natural_aspect_ratio = w / h
+        self.frames = []
+        self.supports_animation = getattr(self.image_object, "is_animated", False)
+        self.arg_params = args
+        if self.supports_animation:
+            self.frame_count = self.image_object.n_frames
+            try:
+                self.speed = int(args['speed'])
+            except:
+                self.speed = 1
+
+    def e_size(self):
+        e_height = 0
+        e_width = 0
+        if 'width' in self.arg_params and 'height' in self.arg_params:
+            print('Letterbox mode')
+            placed_aspect_ratio = float(self.arg_params['width']) / float(self.arg_params['height'])
+            if placed_aspect_ratio < self.natural_aspect_ratio:
+                e_width = self.arg_params['width']
+                e_height = float(self.arg_params['width']) / self.natural_aspect_ratio
+            elif placed_aspect_ratio >= self.natural_aspect_ratio:
+                e_width = float(self.arg_params['height']) * self.natural_aspect_ratio
+                e_height = self.arg_params['height']
+        elif 'with' in self.arg_params:
+            print('Width specified mode')
+            e_width = self.arg_params['width']
+            e_height = float(e_width) / self.natural_aspect_ratio
+        elif 'height' in self.arg_params:
+            print('Height specified mode')
+            e_height = self.arg_params['height'] if 'height' in self.arg_params else self.arg_params['default-height']
+            e_width = float(e_height) * self.natural_aspect_ratio
+        elif 'default-width' in self.arg_params:
+            print('Nothing specified; default width mode')
+            e_width = self.arg_params['default-width']
+            e_height = float(e_width) / self.natural_aspect_ratio
+        elif 'default-height' in self.arg_params:
+            print('Nothing specified; default height mode')
+            e_height = self.arg_params['default-height']
+            e_width = float(e_height) * self.natural_aspect_ratio
+        else:
+            ValueError('AutoLayout couldn\'t find any width or height or fallback width/height to place an image.')
+        return {'height': e_height, 'width': e_width}
+
+    def place(self, **args):
+        element_size = self.e_size()
+        placed_width = element_size['width']
+        placed_height = element_size['height']
+        if self.supports_animation:
+            for frame in range(0, self.frame_count):
+                self.image_object.seek(frame)
+                resized_frame = self.image_object.resize((int(placed_width), int(placed_height)))
+                self.frames.append(ImageTk.PhotoImage(resized_frame))
+                initial_img = self.frames[0]
+        else:
+            resized_frame = self.image_object.resize((int(placed_width), int(placed_height)))
+            initial_img = ImageTk.PhotoImage(resized_frame)
+        self.container = Label(self.tk_root, image=initial_img)
+        self.container.photo = initial_img
+        self.container.place(x=args['x'], y=args['y'], width=placed_width, height=placed_height)
+        if self.supports_animation:
+            self.invoke_animation(self.speed)
+
+    def invoke_animation(self, gif_speed):
+        def update(current_frame=0):
+            if self.play_state == 1:
+                if current_frame + 1 < self.frame_count:
+                    current_frame += 1
+                else:
+                    current_frame = 0
+                self.container.configure(image=self.frames[current_frame])
+                self.container.photo = self.frames[current_frame]
+            self.tk_root.after(int(100 / gif_speed) + 1, lambda: update(current_frame))
+
+        update()
+
+    def pause(self):
+        self.play_state = 0
+
+    def play(self):
+        self.play_state = 1
 
 
 # Subclass which allows for functions to be applied to multiple elements without having to manually iterate
@@ -48,10 +147,6 @@ def clean_inline_yaml(inline_yaml):
         else:
             break
 
-    # Delete indent from each line
-    # for line in yaml_in_progress
-    print(indent_depth)
-
     indent_stripped_lines = []
     for line in lines:
         indent_stripped_lines.append(line[indent_depth:])
@@ -60,6 +155,7 @@ def clean_inline_yaml(inline_yaml):
 
     cleaned_yaml = yaml_in_progress
     return cleaned_yaml
+
 
 presentation_defaults = '''
         window:
@@ -82,6 +178,14 @@ presentation_defaults = '''
           margin-right: 5
           width: 150
         
+        image:
+          margin-top: 5
+          margin-bottom: 5
+          margin-left: 5
+          margin-right: 5
+          default-width: 150
+          speed: 2
+        
         button:
           height: 28
           width: 100
@@ -90,46 +194,40 @@ presentation_defaults = '''
           font-weight: normal
           foreground-color: None
           background-color: None
-          margin-top: 0
-          margin-bottom: 0
+          margin-top: 5
+          margin-bottom: 25
           margin-left: 0
           margin-right: 0
 '''
 
+
 class AutoLayoutWindow:
     def __init__(self, interface='interface.yaml', presentation='presentation.yaml', title='Untitled', during=print):
         if isinstance(interface, collections.Mapping):
-            print('Loading AutoLayoutWindow interface in inline dict mode.')
             self.interface_obj = interface
         elif isinstance(interface, str):
             if interface[len(interface) - 5:len(interface)] == '.yaml':
-                print('Loading AutoLayoutWindow interface in YAML file mode.')
                 with open(interface, 'r') as f:
                     interface_text = f.read()
                 self.interface_obj = yamliny.loads(interface_text.strip())
             else:
-                print('Loading AutoLayoutWindow interface in inline YAML mode.')
                 self.interface_obj = yamliny.loads(clean_inline_yaml(interface))
         else:
             ValueError('Failed to identify an interface YAML file or dict passed to interface argument.')
 
         if isinstance(presentation, collections.Mapping):
-            print('Loading AutoLayoutWindow presentation in inline dict mode.')
             self.presentation_obj = presentation
         elif isinstance(presentation, str):
             if presentation[len(presentation) - 5:len(presentation)] == '.yaml':
-                print('Loading AutoLayoutWindow presentation in YAML file mode.')
                 with open(presentation, 'r') as f:
                     presentation_text = f.read()
                 self.presentation_obj = yamliny.loads(presentation_text.strip())
             else:
-                print('Loading AutoLayoutWindow presentation in inline YAML mode.')
                 self.presentation_obj = yamliny.loads(clean_inline_yaml(presentation))
         else:
             ValueError('Failed to identify an presentation YAML file or dict passed to presentation argument.')
 
         # Default stylesheet
-        # Move to dict within .py file at some point
         self.presentation_defaults_obj = yamliny.loads(clean_inline_yaml(presentation_defaults))
 
         # Set up cursor dictionary
@@ -154,6 +252,7 @@ class AutoLayoutWindow:
 
         if self.auto_layout:
             content_width = int(self.window_style['width'])
+            content_height = int(self.window_style['height']) if 'height' in self.window_style else content_height
 
         for line in self.interface_obj.values():
             # Initiate variables to capture line-level style attributes
@@ -172,7 +271,7 @@ class AutoLayoutWindow:
             if not self.auto_layout:
                 content_width = max([line_width, content_width])
 
-        self.root.geometry(f'{content_width}x{content_height}')
+        self.root.geometry(f'{int(content_width)}x{int(content_height)}')
 
         self.root.after(0, lambda: during(self))
         self.root.mainloop()
@@ -191,10 +290,9 @@ class AutoLayoutWindow:
         # Move in to position for the next element: reset margin top, and shift right for margin right and width
         if 'margin-right' in styles:
             self.cursor['x'] += int(styles['margin-right'])
-        self.cursor['x'] += elem_dimensions['width']
+        self.cursor['x'] += int(elem_dimensions['width'])
         if 'margin-top' in styles:
-            self.cursor['y'] -= int(styles['margin-top'])
-
+            self.cursor['y'] += int(styles['margin-top'])
         return old_cursor
 
     def _cursor_carriage_return(self, line_height):
@@ -247,6 +345,11 @@ class AutoLayoutWindow:
             style = self._get_styles_by_name(elem['name'], style)
         if 'presentation' in elem:
             style = self._get_styles_from_inline(elem['presentation'], style)
+        if 'width' not in style and kind == 'image':
+            style['image-url'] = elem['presentation']['image-url']
+            print('_get_styles is calculating aspect ratio')
+            tmp_img = AutoLayoutGif(None, **style)
+            style['width'] = tmp_img.e_size()['width']
         style['width'] = float(style['width']) * auto_layout_sf
         return style
 
@@ -254,12 +357,14 @@ class AutoLayoutWindow:
         # Construct the tkinter arguments (kwag) from the style object
         for attr, val in styles.items():
             styles[attr] = val = None if val == 'None' else val
-        kwag = {
-            'font': tkfont.Font(self.root, family=styles['font-family'], size=styles['font-size'],
-                                weight=styles['font-weight']),
-            'fg': styles['foreground-color'],
-            'bg': styles['background-color'],
-        }
+        kwag = {}
+        if 'fg' in styles:
+            kwag['fg'] = styles['foreground-color']
+        if 'bg' in styles:
+            kwag['bg'] = styles['background-color']
+        if 'font-family' in styles:  # Text mode
+            kwag['font'] = tkfont.Font(self.root, family=styles['font-family'], size=styles['font-size'],
+                                       weight=styles['font-weight'])
         return kwag
 
     # Private methods (element rendering)
@@ -267,7 +372,8 @@ class AutoLayoutWindow:
     def _render(self, elem_name, elem, auto_layout_sf):
         render_groups = {
             'header': self._render_text,
-            'button': self._render_button
+            'button': self._render_button,
+            'image': self._render_image
         }
         elem['name'] = elem_name
         return render_groups[elem['kind']](elem['kind'], elem, auto_layout_sf)
@@ -316,6 +422,20 @@ class AutoLayoutWindow:
                                                          height=elem_size['height'], width=None)
         return outer_dimensions  # Line height
 
+    def _render_image(self, elem_kind, elem, auto_layout_sf):
+        styles = self._get_styles(elem_kind, elem, auto_layout_sf)
+        #  Pass styles directly, as this is an AutoLayoutWindow subclass, not stock-tkinter
+        self.element_name_dictionary[elem['name']] = AutoLayoutGif(self.root, **styles)
+        self._index_element(self.element_name_dictionary[elem['name']], elem)
+        elem_size = self.element_name_dictionary[elem['name']].e_size()  # Images can use automatic sizing based on
+        outer_dimensions = {                                             # natural aspect ratio
+            'height': int(styles['margin-top']) + int(elem_size['height']) + int(styles['margin-bottom']),
+            'width': int(styles['margin-left']) + int(elem_size['width']) + int(styles['margin-right'])
+        }
+        self.element_name_dictionary[elem['name']].place(**self._cursor(elem_dimensions=elem_size, styles=styles),
+                                                         height=elem_size['height'], width=elem_size['width'])
+        return outer_dimensions  # Line height
+
     # Private methods (to support element rendering)
 
     def _get_line_scale_factor(self, line_items, content_width):
@@ -362,3 +482,6 @@ class AutoLayoutWindow:
         return elem_collection
 
     # Public methods (DOM manipulation)
+
+    def after(self, delay, func):
+        self.root.after(delay, func)
