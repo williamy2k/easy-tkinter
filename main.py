@@ -4,22 +4,27 @@ test_window = AutoLayoutWindow(
     title='Python Application',
     interface='''
         line_0:
-            logo_text:
+            main_title_text:
                 kind: header
-                text: Python App
+                text: Hello, world
         line_1:
-            sub_text:
+            paragraph_text:
                 kind: header
                 text: Welcome to this Python application.
+            aside_photograph:
+                kind: image
+                presentation:
+                    image-url: image.jpg
+                    height: 80
         line_2:
-            btn:
+            primary_action_button:
                 kind: button
                 text: Let's go
     ''',
     presentation='''
         window:
-            background-color: white
-        sub_text:
+            width: 450
+        paragraph_text:
             font-weight: normal
             font-size: 15
     '''
